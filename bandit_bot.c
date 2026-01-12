@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <termios.h>
 
 #define TARGET_USER "bandit0"
 #define TARGET_PASS "bandit0"
@@ -97,19 +98,35 @@ cleanup:
  */
 int interactive_shell(ssh_session session, ssh_channel channel) {
 	int rc;
+	struct termios orig_termios;
+	int raw_mode_enabled = 0;
+	int exit_code = 0;
+
+	// Set up raw mode for the duration of this function
+	if (isatty(STDIN_FILENO)) {
+		if (tcgetattr(STDIN_FILENO, &orig_termios) == 0) {
+			struct termios raw = orig_termios;
+			cfmakeraw(&raw);
+			if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0) {
+				raw_mode_enabled = 1;
+			}
+		}
+	}
 
 	// 1. Request a PTY (Pseudo-Terminal)
 	rc = ssh_channel_request_pty(channel);
 	if (rc != SSH_OK) {
 		fprintf(stderr, "Failed to request PTY: %s\n", ssh_get_error(session));
-		return -1;
+		exit_code = -1;
+		goto cleanup_shell;
 	}
 
 	// 2. Request an interactive shell
 	rc = ssh_channel_request_shell(channel);
 	if (rc != SSH_OK) {
 		fprintf(stderr, "Failed to request shell: %s\n", ssh_get_error(session));
-		return -1;
+		exit_code = -1;
+		goto cleanup_shell;
 	}
 
 	printf("[+] Interactive shell is ready. Press Ctrl+D on a new line to exit.\n");
@@ -125,7 +142,8 @@ int interactive_shell(ssh_session session, ssh_channel channel) {
 
 		int ssh_fd = ssh_get_fd(session);
 		if (ssh_fd < 0) {
-			return -1;
+			exit_code = -1;
+			break;
 		}
 
 		FD_ZERO(&fds);
@@ -163,12 +181,18 @@ int interactive_shell(ssh_session session, ssh_channel channel) {
 				if (nbytes > 0) {
 					if (write(STDOUT_FILENO, buffer, nbytes) != (unsigned int)nbytes) {
 						fprintf(stderr, "Error writing to stdout.\n");
-						return -1;
+						exit_code = -1;
+						goto cleanup_shell;
 					}
 				}
 			} while (nbytes > 0);
 		}
 	}
 
-	return 0;
+cleanup_shell:
+	// Restore terminal settings before leaving the function
+	if (raw_mode_enabled) {
+		tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	}
+	return exit_code;
 }
