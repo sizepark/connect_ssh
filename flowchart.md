@@ -5,50 +5,51 @@ This document outlines the execution flow of the `bandit_bot.c` program.
 ```mermaid
 graph TD
     subgraph main
-        A[Start] --> B{Initialize SSH Session};
-        B --> C{Set SSH Options\n(Host, Port, User)};
-        C --> D{Connect to SSH Server};
-        D -- OK --> E{Authenticate with Password};
-        D -- Fail --> Z[Print Error & Cleanup];
-        E -- Success --> F{Create SSH Channel};
+        A["Start"] --> B["Initialize SSH Session"];
+        B --> C["Set SSH Options<br>(Host, Port, User)"];
+        C --> D["Connect to SSH Server"];
+        D -- OK --> E["Authenticate with Password"];
+        D -- Fail --> Z["Print Error & Cleanup"];
+        E -- Success --> F["Create SSH Channel"];
         E -- Fail --> Z;
-        F -- OK --> G{Open Channel Session};
+        F -- OK --> G["Open Channel Session"];
         F -- Fail --> Z;
-        G -- OK --> H{Check for Initial Command\n(Command-line argument)};
+        G -- OK --> H{"Check for Initial Command<br>(Command-line argument)"};
         G -- Fail --> Z;
-        H --> I[Call interactive_shell];
+        H -- Yes --> I["Call interactive_shell with command"];
+        H -- No --> J["Call interactive_shell"];
     end
 
     subgraph interactive_shell
-        J[Start interactive_shell] --> K{Open log file 'command_log.txt'};
-        K --> L{Set Terminal to Raw Mode};
-        L --> M{Request PTY};
-        M -- OK --> N{Request Shell};
-        M -- Fail --> X[Cleanup Shell & Return];
-        N -- OK --> O{Initial Command Provided?};
-        N -- Fail --> X;
-        O -- Yes --> P[Write Command to Channel];
-        O -- No --> Q;
-        P --> Q[Start Interactive Loop];
+        K["Start interactive_shell"] --> L["Open log file 'command_log.txt'"];
+        L --> M["Set Terminal to Raw Mode"];
+        M --> N["Request PTY"];
+        N -- OK --> O["Request Shell"];
+        N -- Fail --> Y["Cleanup Shell & Return"];
+        O -- OK --> P{"Initial Command Provided?"};
+        O -- Fail --> Y;
+        P -- Yes --> Q["Write Command to Channel"];
+        P -- No --> R;
+        Q --> R["Start Interactive Loop"];
         
-        Q -- Channel Open --> R{Use select() to wait for I/O\n(stdin or SSH)};
-        R -- stdin ready --> S[Read from stdin];
-        S --> T[Write to SSH Channel & Log];
-        T --> Q;
-        S -- End of Input (Ctrl+D) --> U[Send EOF to Channel];
-        U --> W;
+        R -- Channel Open --> S["Use select() to wait for I/O<br>(stdin or SSH)"];
+        S -- stdin ready --> T["Read from stdin"];
+        T --> U["Write to SSH Channel & Log"];
+        U --> R;
+        T -- End of Input (Ctrl+D) --> V["Send EOF to Channel"];
+        V --> X;
 
-        R -- SSH ready --> V[Read from SSH Channel];
-        V --> W[Write to stdout & Log];
-        W --> Q;
+        S -- SSH ready --> W["Read from SSH Channel"];
+        W --> X["Write to stdout & Log"];
+        X --> R;
 
-        Q -- Channel Closed/EOF --> X;
+        R -- Channel Closed/EOF --> Y;
     end
     
-    I --> J;
-    X --> Y[main: Cleanup Session];
-    Y --> End[End];
-    Z --> Y;
+    I --> K;
+    J --> K;
+    Y --> Z;
+    Z --> End["End"];
 ```
 
 ## Flow Description
